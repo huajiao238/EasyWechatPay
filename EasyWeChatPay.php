@@ -162,7 +162,7 @@ class EasyWeChatPay
         } else {
             $this->mchid = $this->params["mchid"];
         }
-        if ($this->type == "jsapi") {
+        if ($this->type == "jsapi" || $this->type == "miniapp") {
             $this->params["payer"]["openid"] = $this->openId;
         }
         if ($this->type == "h5") {
