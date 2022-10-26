@@ -202,6 +202,12 @@ class EasyWeChatPay
      * @return bool
      */
     public function checkSign(): bool {
+        if(!this->privateKey) {
+            throw new ErrorException("请设置私钥路径");
+        }
+        if(!$this->apiKey) {
+            throw new ErrorException("请设置apiv3key");
+        }
         $wechat_sign = $_SERVER["HTTP_Wechatpay-Signature"];
         $wechat_serial_no = $_SERVER["HTTP_Wechatpay-Serial"];
         $timestamp = $_SERVER["HTTP_Wechatpay-Timestamp"];
