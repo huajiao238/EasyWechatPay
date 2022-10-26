@@ -197,6 +197,51 @@ class EasyWeChatPay
     }
 
     /**
+     * 异步验签
+     * @throws ErrorException
+     * @return bool
+     */
+    public function checkSign(): bool {
+        $wechat_sign = $_SERVER["HTTP_Wechatpay-Signature"];
+        $wechat_serial_no = $_SERVER["HTTP_Wechatpay-Serial"];
+        $timestamp = $_SERVER["HTTP_Wechatpay-Timestamp"];
+        $nonce = $_SERVER["HTTP_Wechatpay-Nonce"];
+        $data = file_get_contents("php://input");
+        $data = (array)json_decode($data, true);
+        $nonce_str = $data["resource"]["nonce"];
+        $associated_data = $data["resource"]["associated_data"];
+        $cipher_text = $data["resource"]["ciphertext"];
+        try {
+            $result = $this->notifyBodyDecrypt($cipher_text, $nonce_str, $associated_data);
+        } catch (ErrorException $e) {
+            throw new ErrorException($e->getMessage());
+        }
+        $resultJson = json_encode($result);
+        $platform_public_key = $this->getPlatformCertificates($wechat_serial_no);
+        $origin_sign = "$timestamp\n$nonce\n$resultJson";
+        return $this->signVerify($origin_sign, $wechat_sign, $platform_public_key);
+    }
+
+    /**
+     * 通知消息体解密
+     * @param string $cipherText
+     * @param string $nonce
+     * @param string $a_data
+     * @param string $type
+     * @return array|false|string
+     * @throws ErrorException
+     */
+    public function notifyBodyDecrypt(string $cipherText, string $nonce, string $a_data, string $type = ""): bool|array|string
+    {
+        try {
+            $data = sodium_crypto_aead_aes256gcm_decrypt($cipherText, $a_data, $nonce, $this->apikey);
+        } catch (SodiumException $e) {
+            throw new ErrorException($e->getMessage());
+        }
+        return $type == "" ? (array)json_decode($data, true) : $data;
+    }
+
+    /**
      * 构造jsapi体
      * @param array $param
      * @return bool|string
@@ -325,7 +370,7 @@ class EasyWeChatPay
     private function signParamsGenerate(string $request_body, string $method = "POST"): string
     {
         $host_path = $method == "POST" ? $this->getHostPath($this->url[$this->type]) : $this->getHostPath($this->cert_url);
-        $sign_origin = "{$method}\n{$host_path}\n{$this->time_stamp}\n{$this->nonceStr}\n{$request_body}\n";
+        $sign_origin = "$method\n$host_path\n$this->time_stamp\n$this->nonceStr\n$request_body\n";
         openssl_sign($sign_origin, $sign, $this->getPrivateKey(), 'sha256WithRSAEncryption');
         return base64_encode($sign);
     }
@@ -405,14 +450,15 @@ class EasyWeChatPay
 
     /**
      * GET请求
-     * @return array|mixed
+     * @param array $header
+     * @return array
      */
-    private function requestGet()
+    private function requestGet(array $header): array
     {
         $curl = curl_init();
         curl_setopt($curl, CURLOPT_URL, $this->cert_url);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($curl, CURLOPT_HTTPHEADER, $this->getAuthorizationHeader([], "GET"));
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $header);
         curl_setopt($curl, CURLOPT_TIMEOUT, 30);
         if ($this->getHostScheme($this->cert_url) === "https") {
             curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
@@ -428,7 +474,7 @@ class EasyWeChatPay
                 "message" => "错误代码：{$response->code},错误信息：{$response->message}"
             ];
         }
-        return json_decode(json_encode($response), true);
+        return (array)json_decode($response, true);
     }
 
     /**
@@ -450,5 +496,61 @@ class EasyWeChatPay
         } catch (\SodiumException $e) {
             throw new ErrorException($e->getMessage());
         }
+    }
+
+    /**
+     * 下载平台证书
+     * @param string $platformSerialNo
+     * @return string
+     * @throws ErrorException
+     */
+    private function getPlatformCertificates(string $platformSerialNo): string {
+        $platformCertificates = $this->requestGet($this->buildDownloadPlatformCertificatesHeader());
+        $platform_public_key = "";
+        if(!array_key_exists("code",$platformCertificates)) {
+            foreach ($platformCertificates["data"] as $v) {
+                if($v["serial_no"] == $platformSerialNo) {
+                    try {
+                        $platform_public_key = $this->notifyBodyDecrypt($v["encrypt_certificate"]["cipher"], $v["encrypt_certificate"]["nonce"], $v["encrypt_certificate"]["associated_data"], "1");
+                    } catch (ErrorException $e) {
+                        throw new ErrorException($e->getMessage());
+                    }
+                }
+            }
+        }
+        return $platform_public_key;
+    }
+
+    /**
+     * 构造证书下载请求头
+     * @return string[]
+     */
+    private function buildDownloadPlatformCertificatesHeader(): array {
+        return [
+            "Authorization:WECHATPAY2-SHA256-RSA2048 {$this->signDownloadPlatformCertificatesAuthorization()}",
+            "Accept:application/json",
+            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.37"
+        ];
+    }
+
+    /**
+     * 下载证书加签
+     * @return string
+     */
+    private function signDownloadPlatformCertificatesAuthorization(): string {
+        $string = "GET\n/v3/certificates\n$this->time_stamp\n$this->nonceStr\n\n";
+        openssl_sign($string, $sign, $this->getPrivateKey(), 'sha256WithRSAEncryption');
+        return $sign;
+    }
+
+    /**
+     * 验证签名
+     * @param string $data
+     * @param string $sign
+     * @param $public_key
+     * @return bool
+     */
+    private function signVerify(string $data, string $sign, $public_key): bool {
+        return (1 == openssl_verify($data, base64_decode($sign), openssl_get_publickey($public_key),"sha256WithRSAEncryption"));
     }
 }
