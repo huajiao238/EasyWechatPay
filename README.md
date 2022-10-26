@@ -8,7 +8,7 @@ PHP版本 >=8
 
 ### 调用示例：
 
-#### 电脑网页支付：
+#### 一、电脑网页支付：
 
 ```php
 <?php
@@ -49,7 +49,7 @@ try {
 ]
 ```
 
-#### 手机网页支付：
+#### 二、手机网页支付：
 
 ```php
 <?php
@@ -91,7 +91,7 @@ try {
 //跳转到h5_url即可
 ```
 
-#### jsapi微信内支付：
+#### 三、公众号支付：
 
 ```php
 <?php
@@ -159,7 +159,7 @@ if (typeof WeixinJSBridge == "undefined") {
 }
 ```
 
-#### 小程序支付：
+#### 四、小程序支付：
 
 ```php
 <?php
@@ -220,7 +220,7 @@ wx.requestPayment
 )
 ```
 
-#### **APP支付：**
+#### 五、**APP支付：**
 
 ```php
 <?php
@@ -279,3 +279,26 @@ request.timeStamp= data.timestamp;
 request.sign= data.sign;
 api.sendReq(request);
 ```
+
+#### 六、异步通知验签
+
+```php
+<?php
+require "EasyWeChatPay.php";
+try {
+    $pay = new EasyWeChatPay();
+   	$pay->setApiKey("你的APIV3key")
+    if($pay->checkSign) { //验签成功
+        $responseBody = file_get_contents("php://input");
+        $data = (array)json_decode($responseBody, true);
+        $decrypeBody = $pay->notifyBodyDecrypt($data["resource"]["ciphertext"],$data["resource"]["nonce"],$data["resource"]["associated_data"]);   //解密后的数据  参考https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_5.shtml
+        if($decryptBody["trade_state"] == "SUCCESS") {
+            //支付成功  你的业务逻辑
+        }
+        
+    }
+}catch (ErrorException $e) {
+    echo $e->getMessage();
+}
+```
+
