@@ -287,7 +287,8 @@ api.sendReq(request);
 require "EasyWeChatPay.php";
 try {
     $pay = new EasyWeChatPay();
-   	$pay->setApiKey("你的APIV3key")
+    $pay->setApiKey("你的APIV3key");
+    $pay->setPrivateKey("私钥路径");
     if($pay->checkSign()) { //验签成功
         $responseBody = file_get_contents("php://input");
         $data = (array)json_decode($responseBody, true);
