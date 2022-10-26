@@ -288,7 +288,7 @@ require "EasyWeChatPay.php";
 try {
     $pay = new EasyWeChatPay();
    	$pay->setApiKey("你的APIV3key")
-    if($pay->checkSign) { //验签成功
+    if($pay->checkSign()) { //验签成功
         $responseBody = file_get_contents("php://input");
         $data = (array)json_decode($responseBody, true);
         $decrypeBody = $pay->notifyBodyDecrypt($data["resource"]["ciphertext"],$data["resource"]["nonce"],$data["resource"]["associated_data"]);   //解密后的数据  参考https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_5.shtml
